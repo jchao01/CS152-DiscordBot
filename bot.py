@@ -1,12 +1,16 @@
 # bot.py
 import discord
 from discord.ext import commands
+from discord.utils import get
 import os
 import json
 import logging
 import re
 import requests
 from report import Report
+from review import Review
+from uni2ascii import uni2ascii
+import globals
 
 # Set up logging to the console
 logger = logging.getLogger('discord')
@@ -14,6 +18,14 @@ logger.setLevel(logging.DEBUG)
 handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
 handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 logger.addHandler(handler)
+
+""" 
+other things
+- route automated reports (bot reports) to review flow, probably set a highthreshold i.e. >97% confidence where posts are just auto deleted, no review
+    - "Medium" thresholds i.e. >90%, generate a report and send to moderator review flow
+- distinguish between review and report in dms
+
+"""
 
 # There should be a file called 'token.json' inside the same folder as this file
 token_path = 'tokens.json'
@@ -33,6 +45,7 @@ class ModBot(discord.Client):
         self.group_num = None   
         self.mod_channels = {} # Map from guild to the mod channel id for that guild
         self.reports = {} # Map from user IDs to the state of their report
+        self.reviews = {} # Map from user IDs to the state of their review
         self.perspective_key = key
 
     async def on_ready(self):
@@ -69,7 +82,65 @@ class ModBot(discord.Client):
         else:
             await self.handle_dm(message)
 
+    async def on_raw_message_edit(self, payload):
+        # Message sent in a server
+        if "guild_id" in payload.data:
+            # Search for the message via guild and channel
+            guild = client.get_guild((int)(payload.data["guild_id"]))
+            if not guild:
+                return
+            channel = guild.get_channel((int)(payload.data["channel_id"]))
+            if not channel:
+                return
+            try:
+                message = await channel.fetch_message((int)(payload.data["id"]))
+            except discord.errors.NotFound:
+                return
+            
+            await self.handle_channel_message(message)
+        
+        # Message is a DM
+        else:
+            # Search for the message via channel
+            channel = client.get_channel((int)(payload.data["channel_id"]))
+            if not channel:
+                return
+            try:
+                message = await channel.fetch_message((int)(payload.data["id"]))
+            except discord.errors.NotFound:
+                return
+
+            await self.handle_dm(message)
+
+    async def on_raw_reaction_add(self, payload):
+        mod_channel = self.mod_channels[payload.guild_id]
+        if payload.guild_id in self.mod_channels and payload.emoji.name == "✋" and self.user.id != payload.user_id:
+            message = await mod_channel.fetch_message(payload.message_id)
+            reaction = get(message.reactions, emoji=payload.emoji.name)
+                
+            # DM user 
+            ticket_message = await mod_channel.fetch_message(payload.message_id)
+            id = ticket_message.content.split()[1][1:]
+            report = globals.REPORTS_DATABASE[(int)(id)]
+
+            if reaction and reaction.count > globals.NUM_REVIEWERS:
+                await message.delete()
+
+            reply = "Report summary for Ticket #" + id + "\n```"
+            reply += "Reporting user: " + str(report.reporting_user) + "\n"
+            reply += "Reported user: " + str(report.reported_user) + "\n"
+            reply += "Message: " + str(report.reported_message.content) + "\n"
+            reply += "Category: " + str(report.reported_category) + "\n"
+            reply += "Additional Info: " + str(report.reported_description) + "```\n"
+            reply += "Enter 's' when you're ready to start reviewing."
+            await payload.member.send(reply)
+
+            globals.CURRENT_REVIEWERS_DB[payload.user_id] = id
+
     async def handle_dm(self, message):
+        # Translate unicode
+        message.content = uni2ascii(message.content)
+
         # Handle a help message
         if message.content == Report.HELP_KEYWORD:
             reply =  "Use the `report` command to begin the reporting process.\n"
@@ -80,24 +151,83 @@ class ModBot(discord.Client):
         author_id = message.author.id
         responses = []
 
+        # Let the report class handle this message; forward all the messages it returns to us
+        if author_id not in globals.CURRENT_REVIEWERS_DB:
         # Only respond to messages if they're part of a reporting flow
-        if author_id not in self.reports and not message.content.startswith(Report.START_KEYWORD):
-            return
+            if author_id not in self.reports and not message.content.startswith(Report.START_KEYWORD):
+                return
 
-        # If we don't currently have an active report for this user, add one
-        if author_id not in self.reports:
-            self.reports[author_id] = Report(self)
+            # If we don't currently have an active report for this user, add one
+            if author_id not in self.reports:
+                self.reports[author_id] = Report(self)
         
-        # Let the report class handle this message; forward all the messages it returns to uss
-        responses = await self.reports[author_id].handle_message(message)
-        for r in responses:
-            await message.channel.send(r)
+            responses, report = await self.reports[author_id].handle_message(message)
+            for r in responses:
+                await message.channel.send(r)
 
-        # If the report is complete or cancelled, remove it from our map
-        if self.reports[author_id].report_complete():
-            self.reports.pop(author_id)
+            # If the report is complete or cancelled, remove it from our map
+            if self.reports[author_id].report_complete():
+                self.reports.pop(author_id)
+                if report is not None:
+                    globals.TICKET_NUM += 1
+                    globals.REPORTS_DATABASE[globals.TICKET_NUM] = report
+                    await self.handle_report(globals.TICKET_NUM)
+        else: # This is a review from a moderator
+            # If we don't currently have an active report for this user, add one
+            if author_id not in self.reviews and message.content != "s":
+                return
+
+            if author_id not in self.reviews:
+                self.reviews[author_id] = Review(self)
+            
+            case_id = globals.CURRENT_REVIEWERS_DB[author_id]
+            report = globals.REPORTS_DATABASE[(int)(case_id)]
+
+            responses = await self.reviews[author_id].review_report(message, report, case_id, author_id)
+            for r in responses:
+                await message.channel.send(r) 
+
+            # If the review is complete or cancelled, remove it from our map
+            if self.reviews[author_id].review_complete():
+                self.reviews.pop(author_id)
+                del globals.CURRENT_REVIEWERS_DB[author_id]
+                # Set number of reviewers in globals file
+                if (len(globals.REVIEWS_DATABASE[case_id]) >= globals.NUM_REVIEWERS):
+                    await self.handle_review(case_id)
+
+    async def handle_review(self, case_id):
+        report = globals.REPORTS_DATABASE[(int)(case_id)]
+        mod_channel = self.mod_channels[report.reported_message.guild.id]
+
+        decision_code_list = globals.REVIEWS_DATABASE[case_id]
+        for i in range(len(decision_code_list)):
+            if decision_code_list[i] != decision_code_list[0]:
+                decision_code_list[0] = 0
+                break
+
+        if decision_code_list[0] > 90:
+            await mod_channel.send(f'{report.reported_user} has been absolved. ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
+        elif 20 <= decision_code_list[0] < 30:
+            await mod_channel.send(f'{report.reported_user} has been (not actually) kicked ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
+        elif 10 <= decision_code_list[0] < 20:
+            await report.reported_message.delete()
+            await mod_channel.send(f'{report.reported_user}\'s offending post has been deleted. ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
+        elif decision_code_list[0] == 0:
+            del globals.REVIEWS_DATABASE[case_id]
+            await mod_channel.send(f'Code: {decision_code_list[0]} ```Ticket: {case_id}``` has been reopened. A consensus was not reached.')
+            await self.handle_review(case_id)
+
+
+    async def handle_report(self, id):
+        report = globals.REPORTS_DATABASE[id]
+        mod_channel = self.mod_channels[report.reported_message.guild.id]
+        message = await mod_channel.send(f'Ticket #{id} | {globals.get_catStr(report)}')
+        await message.add_reaction('✋')
 
     async def handle_channel_message(self, message):
+        # Translate unicode
+        message.content = uni2ascii(message.content)
+
         # Only handle messages sent in the "group-#" channel
         if not message.channel.name == f'group-{self.group_num}':
             return 
@@ -106,7 +236,19 @@ class ModBot(discord.Client):
         mod_channel = self.mod_channels[message.guild.id]
         await mod_channel.send(f'Forwarded message:\n{message.author.name}: "{message.content}"')
 
+        # Check if scores are above threshold.
         scores = self.eval_text(message)
+        should_delete = False
+        for attr, score in scores.items():
+            if score >= globals.SCORE_THRESHOLD:
+                await mod_channel.send(f'WARNING: {attr} has score {score} which is above the threshold {globals.SCORE_THRESHOLD}')
+                should_delete = True
+        
+        if should_delete:
+            await mod_channel.send('DELETING MESSAGE')
+            await message.author.send('Your message has been temporarily deleted pending moderation.')
+            await message.delete()
+
         await mod_channel.send(self.code_format(json.dumps(scores, indent=2)))
 
     def eval_text(self, message):
