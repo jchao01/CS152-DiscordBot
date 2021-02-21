@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import requests
-from report import Report
+from report import Report, ReportDatabaseEntry
 from review import Review
 from uni2ascii import uni2ascii
 import globals
@@ -19,13 +19,6 @@ handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w'
 handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 logger.addHandler(handler)
 
-""" 
-other things
-- route automated reports (bot reports) to review flow, probably set a highthreshold i.e. >97% confidence where posts are just auto deleted, no review
-    - "Medium" thresholds i.e. >90%, generate a report and send to moderator review flow
-- distinguish between review and report in dms
-
-"""
 
 # There should be a file called 'token.json' inside the same folder as this file
 token_path = 'tokens.json'
@@ -236,20 +229,35 @@ class ModBot(discord.Client):
         mod_channel = self.mod_channels[message.guild.id]
         await mod_channel.send(f'Forwarded message:\n{message.author.name}: "{message.content}"')
 
-        # Check if scores are above threshold.
         scores = self.eval_text(message)
+        await mod_channel.send(self.code_format(json.dumps(scores, indent=2)))
+
+        # Determine moderation actions based on scores
         should_delete = False
+        should_report = False
+        reported_description = ''
         for attr, score in scores.items():
-            if score >= globals.SCORE_THRESHOLD:
-                await mod_channel.send(f'WARNING: {attr} has score {score} which is above the threshold {globals.SCORE_THRESHOLD}')
+            if score >= globals.AUTO_DELETE_THRESHOLD:
+                await mod_channel.send(f'WARNING: {attr} has score {score} which is above the auto delete threshold {globals.AUTO_DELETE_THRESHOLD}')
                 should_delete = True
+            elif score >= globals.AUTO_REPORT_THRESHOLD:
+                reported_description += f'{attr} has score {score} which is above the auto report threshold {globals.AUTO_REPORT_THRESHOLD}\n'
+                await mod_channel.send(f'INFO: {attr} has score {score} which is above the auto report threshold {globals.AUTO_REPORT_THRESHOLD}')
+                should_report = True
         
+        # Handle moderation actions
         if should_delete:
-            await mod_channel.send('DELETING MESSAGE')
-            await message.author.send('Your message has been temporarily deleted pending moderation.')
+            await message.author.send('Your message has been flagged by our automatic moderation system and has been deleted.')
             await message.delete()
 
-        await mod_channel.send(self.code_format(json.dumps(scores, indent=2)))
+        elif should_report:
+            await message.author.send('Your message has been flagged by our automatic moderation system and is pending manual review.')
+            # Auto detection falls under offensive/harmful/abusive content
+            report = ReportDatabaseEntry('ModBot', message.author, message, '2', '5', reported_description)
+            # Create report ticket
+            globals.TICKET_NUM += 1
+            globals.REPORTS_DATABASE[globals.TICKET_NUM] = report
+            await self.handle_report(globals.TICKET_NUM)
 
     def eval_text(self, message):
         '''
