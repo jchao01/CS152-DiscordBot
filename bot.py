@@ -123,7 +123,7 @@ class ModBot(discord.Client):
             reply += "Reporting user: " + str(report.reporting_user) + "\n"
             reply += "Reported user: " + str(report.reported_user) + "\n"
             reply += "Message: " + str(report.reported_message.content) + "\n"
-            reply += "Category: " + str(report.reported_category) + "\n"
+            reply += "Category: " + globals.get_catStr(report) + "\n"
             reply += "Additional Info: " + str(report.reported_description) + "```\n"
             reply += "Enter 's' when you're ready to start reviewing."
             await payload.member.send(reply)
@@ -200,19 +200,24 @@ class ModBot(discord.Client):
 
         if decision_code_list[0] > 90:
             await mod_channel.send(f'{report.reported_user} has been absolved. ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
+            await report.reporting_user.send('Your report has been processed and we have decided not to take action at this time. Please feel free to DM a moderator if you have further questions.')
         elif 20 <= decision_code_list[0] < 30:
+            await report.reported_message.delete()
             await mod_channel.send(f'{report.reported_user} has been (not actually) kicked ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
+            await report.reporting_user.send('Your report has been processed - the offending post has been deleted and the offending user has been kicked.')
         elif 10 <= decision_code_list[0] < 20:
             await report.reported_message.delete()
             await mod_channel.send(f'{report.reported_user}\'s offending post has been deleted. ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
+            await report.reporting_user.send('Your report has been processed and the offending post has been deleted.')
         elif decision_code_list[0] == 0:
             del globals.REVIEWS_DATABASE[case_id]
-            await mod_channel.send(f'Code: {decision_code_list[0]} ```Ticket: {case_id}``` has been reopened. A consensus was not reached.')
-            await self.handle_review(case_id)
-
+            await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id}``` has been reopened. A consensus was not reached.')
+            await self.handle_report(case_id)
+        
+        
 
     async def handle_report(self, id):
-        report = globals.REPORTS_DATABASE[id]
+        report = globals.REPORTS_DATABASE[(int)(id)]
         mod_channel = self.mod_channels[report.reported_message.guild.id]
         message = await mod_channel.send(f'Ticket #{id} | {globals.get_catStr(report)}')
         await message.add_reaction('✋')
@@ -227,10 +232,8 @@ class ModBot(discord.Client):
         
         # Forward the message to the mod channel
         mod_channel = self.mod_channels[message.guild.id]
-        await mod_channel.send(f'Forwarded message:\n{message.author.name}: "{message.content}"')
 
         scores = self.eval_text(message)
-        await mod_channel.send(self.code_format(json.dumps(scores, indent=2)))
 
         # Determine moderation actions based on scores
         should_delete = False
@@ -238,22 +241,21 @@ class ModBot(discord.Client):
         reported_description = ''
         for attr, score in scores.items():
             if score >= globals.AUTO_DELETE_THRESHOLD:
-                await mod_channel.send(f'WARNING: {attr} has score {score} which is above the auto delete threshold {globals.AUTO_DELETE_THRESHOLD}')
                 should_delete = True
             elif score >= globals.AUTO_REPORT_THRESHOLD:
-                reported_description += f'{attr} has score {score} which is above the auto report threshold {globals.AUTO_REPORT_THRESHOLD}\n'
-                await mod_channel.send(f'INFO: {attr} has score {score} which is above the auto report threshold {globals.AUTO_REPORT_THRESHOLD}')
+                reported_description += f'\n{attr} score: {score} > auto-report threshold {globals.AUTO_REPORT_THRESHOLD}'
                 should_report = True
         
         # Handle moderation actions
         if should_delete:
             await message.author.send('Your message has been flagged by our automatic moderation system and has been deleted.')
+            await mod_channel.send(f'Message Auto-Deleted: ```{message.author.name}: "{message.content}"```')
             await message.delete()
 
         elif should_report:
             await message.author.send('Your message has been flagged by our automatic moderation system and is pending manual review.')
             # Auto detection falls under offensive/harmful/abusive content
-            report = ReportDatabaseEntry('ModBot', message.author, message, '2', '5', reported_description)
+            report = ReportDatabaseEntry('ModBot', message.author, message, '1', '5', reported_description)
             # Create report ticket
             globals.TICKET_NUM += 1
             globals.REPORTS_DATABASE[globals.TICKET_NUM] = report

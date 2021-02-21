@@ -54,11 +54,13 @@ class Review:
 
         if self.state == State.CONFIRM_CATEGORY:
             # REPLACE WITH A REGEX IN THE FUTURE
-            cat_codes = message.content.split(",")
-            if cat_codes[0] in ["1", "2"] and cat_codes[1] in ["1", "2", "3", "4", "5"]:
-                globals.REPORTS_DATABASE[(int)(case_id)].reported_category = cat_codes[0]
-                globals.REPORTS_DATABASE[(int)(case_id)].reported_subcategory = cat_codes[1]
-                message.content = "y"
+            if "," in message.content:
+                cat_codes = message.content.split(",")
+                if cat_codes[0] is not None and cat_codes[1] is not None:
+                    if cat_codes[0] in ["1", "2"] and cat_codes[1] in ["1", "2", "3", "4", "5"]:
+                        globals.REPORTS_DATABASE[(int)(case_id)].reported_category = cat_codes[0]
+                        globals.REPORTS_DATABASE[(int)(case_id)].reported_subcategory = cat_codes[1]
+                        message.content = "y"
 
             if message.content == "y":
                 report = globals.REPORTS_DATABASE[(int)(case_id)]
