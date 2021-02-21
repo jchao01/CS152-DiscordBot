@@ -1,1 +1,4 @@
 tokens.json
+.vscode
+__pycache__
+discord.log
