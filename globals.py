@@ -1,4 +1,4 @@
-AUTO_REPORT_THRESHOLD = 0.90
+AUTO_REPORT_THRESHOLD = 0.80
 AUTO_DELETE_THRESHOLD = 0.97
 TICKET_NUM = 0
 # Key: case_id Value: Report
@@ -8,7 +8,7 @@ REVIEWS_DATABASE = {}
 # Key: user_id Value: case_id
 CURRENT_REVIEWERS_DB = {}
 # Number of reviewers
-NUM_REVIEWERS = 1
+NUM_REVIEWERS = 2
 
 
 """ 

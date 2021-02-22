@@ -7,6 +7,7 @@ class State(Enum):
     REVIEW_START = auto()
     CONFIRM_ISSUE = auto()
     CONFIRM_CATEGORY = auto()
+    CONFIRM_CATEGORY_CUSTOM = auto()
     CONFIRM_VIOLATION = auto()
     REVIEW_COMPLETE = auto()
 
@@ -39,8 +40,12 @@ class Review:
         if self.state == State.CONFIRM_ISSUE:
             if message.content == "y":
                 reply = f'The reported category was ```{globals.get_catStr(report)}```\n'
-                reply += "Is that correct? Enter 'y' or 'n'" 
-                self.state = State.CONFIRM_CATEGORY
+                if (report.reported_category == "3"):
+                    reply += "Please select the proper category. Enter 's' to continue"
+                    self.state = State.CONFIRM_CATEGORY_CUSTOM
+                else:
+                    reply += "Is that correct? Enter 'y' or 'n'" 
+                    self.state = State.CONFIRM_CATEGORY
                 return [reply]
             elif message.content == "n":
                 reply = "Review complete. Message marked as a non-violation."
@@ -52,8 +57,7 @@ class Review:
                 self.state = State.REVIEW_COMPLETE
             return [reply]
 
-        if self.state == State.CONFIRM_CATEGORY:
-            # REPLACE WITH A REGEX IN THE FUTURE
+        if self.state == State.CONFIRM_CATEGORY or self.state == State.CONFIRM_CATEGORY_CUSTOM:
             if "," in message.content:
                 cat_codes = message.content.split(",")
                 if cat_codes[0] is not None and cat_codes[1] is not None:
@@ -62,15 +66,7 @@ class Review:
                         globals.REPORTS_DATABASE[(int)(case_id)].reported_subcategory = cat_codes[1]
                         message.content = "y"
 
-            if message.content == "y":
-                report = globals.REPORTS_DATABASE[(int)(case_id)]
-                reply = f'```SNIPPET FROM ATTORNEY-APPROVED OFFICIAL CONTENT POLICY REGARDING: {globals.get_catStr(report)}```\n'
-                if (report.reported_description != None):
-                    reply += f'The victim provided the following additional information: ```{report.reported_description}```\n'
-                reply += "Does this post violate the above policy? Enter 'y' or 'n'"
-                self.state = State.CONFIRM_VIOLATION
-                return [reply]
-            elif message.content == "n":
+            if message.content == "n" or (self.state == State.CONFIRM_CATEGORY_CUSTOM and message.content == "s"):
                 reply = """
                 Category 1: Fake, Spam, or Fraudulent
                     Subcategories:
@@ -88,6 +84,14 @@ class Review:
                     5 : Hate Speech, Harassment, or Bullying\n"""
 
                 reply += "Enter the correct category number followed immediately by the subcategory number. i.e. '1,1' or '2,3'"
+                return [reply]
+            elif message.content == "y":
+                report = globals.REPORTS_DATABASE[(int)(case_id)]
+                reply = f'```SNIPPET FROM ATTORNEY-APPROVED OFFICIAL CONTENT POLICY REGARDING: {globals.get_catStr(report)}```\n'
+                if (report.reported_description != None):
+                    reply += f'The victim provided the following additional information: ```{report.reported_description}```\n'
+                reply += "Does this post violate the above policy? Enter 'y' or 'n'"
+                self.state = State.CONFIRM_VIOLATION
                 return [reply]
 
         if self.state == State.CONFIRM_VIOLATION:
