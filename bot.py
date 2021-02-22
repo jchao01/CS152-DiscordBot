@@ -199,19 +199,19 @@ class ModBot(discord.Client):
                 break
 
         if decision_code_list[0] > 90:
-            await mod_channel.send(f'{report.reported_user} has been absolved. ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
-            await report.reporting_user.send('Your report has been processed and we have decided not to take action at this time. Please feel free to DM a moderator if you have further questions.')
+            await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - {report.reported_user}\'s post was deemed not a violation.```')
+            await report.reporting_user.send('```Your report has been processed - we have decided not to take action at this time. Feel free to DM a moderator if you have further questions.```')
         elif 20 <= decision_code_list[0] < 30:
             await report.reported_message.delete()
-            await mod_channel.send(f'{report.reported_user} has been (not actually) kicked ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
-            await report.reporting_user.send('Your report has been processed - the offending post has been deleted and the offending user has been kicked.')
+            await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - {report.reported_user} has been (not actually) kicked.```')
+            await report.reporting_user.send('```Your report has been processed - the offending user has been kicked and their post has been deleted.```')
         elif 10 <= decision_code_list[0] < 20:
             await report.reported_message.delete()
-            await mod_channel.send(f'{report.reported_user}\'s offending post has been deleted. ```Code: {decision_code_list[0]}, Ticket: {case_id}```')
-            await report.reporting_user.send('Your report has been processed and the offending post has been deleted.')
+            await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - {report.reported_user}\'s offending post has been deleted.```')
+            await report.reporting_user.send('```Your report has been processed - the offending post has been deleted.```')
         elif decision_code_list[0] == 0:
             del globals.REVIEWS_DATABASE[case_id]
-            await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id}``` has been reopened. A consensus was not reached.')
+            await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - Consensus not reached, the ticket has been reopened. 👇```')
             await self.handle_report(case_id)
         
         
@@ -248,12 +248,12 @@ class ModBot(discord.Client):
         
         # Handle moderation actions
         if should_delete:
-            await message.author.send('Your message has been flagged by our automatic moderation system and has been deleted.')
-            await mod_channel.send(f'Message Auto-Deleted: ```{message.author.name}: "{message.content}"```')
+            await message.author.send('```Your message was flagged by our automatic moderation system and has been deleted.```')
+            await mod_channel.send(f'```{message.author.name}\'s post auto-deleted: "{message.content}"```')
             await message.delete()
 
         elif should_report:
-            await message.author.send('Your message has been flagged by our automatic moderation system and is pending manual review.')
+            await message.author.send('```Your message was flagged by our automatic moderation system and is under review.```')
             # Auto detection falls under offensive/harmful/abusive content
             report = ReportDatabaseEntry('ModBot', message.author, message, '1', '5', reported_description)
             # Create report ticket
