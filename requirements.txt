@@ -1,0 +1,4 @@
+uni2ascii_janin==1.0.1
+requests==2.25.1
+discord.py==1.6.0
+discord==1.0.1
