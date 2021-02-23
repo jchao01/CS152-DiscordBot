@@ -13,6 +13,7 @@ class State(Enum):
     OTHER_REASON = auto()
     CATEGORY_COMPLETE = auto()
     DESCRIPTION_COMPLETE = auto()
+    SET_NUM_REVIEWERS = auto()
 
 INCOMPLETE_REPORTS = {}
 
@@ -41,7 +42,13 @@ class Report:
         prompts to offer at each of those states. You're welcome to change anything you want; this skeleton is just here to
         get you started and give you a model for working with Discord. 
         '''
-
+        if self.state == State.SET_NUM_REVIEWERS:
+            if message.content in ["1", "2", "3", "4"]:
+                globals.NUM_REVIEWERS = (int)(message.content)
+                del INCOMPLETE_REPORTS[message.author]
+                self.state = State.REPORT_COMPLETE
+                return [f'```Required reviewers set to {message.content}```'], None
+    
         if message.content == self.CANCEL_KEYWORD:
             del INCOMPLETE_REPORTS[message.author]
             self.state = State.REPORT_COMPLETE
@@ -57,6 +64,10 @@ class Report:
             return [reply], None
         
         if self.state == State.AWAITING_MESSAGE:
+            if message.content == "SET_NUM_REVIEWERS_auth=we_know_this_isnt_secure":
+                self.state = State.SET_NUM_REVIEWERS
+                return ["```Please set the number of required reviewers. This should be a number from 1 to 4.```"], None
+
             # Parse out the three ID strings from the message link
             m = re.search('/(\d+)/(\d+)/(\d+)', message.content)
             if not m:

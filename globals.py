@@ -8,7 +8,7 @@ REVIEWS_DATABASE = {}
 # Key: user_id Value: case_id
 CURRENT_REVIEWERS_DB = {}
 # Number of reviewers
-NUM_REVIEWERS = 1
+NUM_REVIEWERS = 2
 
 
 """ 
