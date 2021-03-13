@@ -11,7 +11,7 @@ from report import Report, ReportDatabaseEntry
 from review import Review
 from uni2ascii import uni2ascii
 import globals
-from model.abridged import isFakeNews
+from model.abridged import *
 
 # Set up logging to the console
 logger = logging.getLogger('discord')
@@ -66,6 +66,7 @@ class ModBot(discord.Client):
         This function is called whenever a message is sent in a channel that the bot can see (including DMs). 
         Currently the bot is configured to only handle messages that are sent over DMs or in your group's "group-#" channel. 
         '''
+        mod_channel = self.mod_channels[message.guild.id]
         # Ignore messages from us 
         if message.author.id == self.user.id:
             return
@@ -75,6 +76,13 @@ class ModBot(discord.Client):
             await self.handle_channel_message(message)
         else:
             await self.handle_dm(message)
+        
+        if message.content == '!add_user':
+            if str(message.author) not in get_all_users_firebase():
+                add_user(str(message.author))
+                await mod_channel.send(f'```Added User: {str(message.author)} to the Firebase Database.```')
+            else:
+                await mod_channel.send(f'```User: {str(message.author)} is trying to re-add themselves to the Firebase Database.```')
 
     async def on_raw_message_edit(self, payload):
         # Message sent in a server

@@ -3,6 +3,8 @@ import discord
 import re
 import globals
 
+from model.abridged import *
+
 class State(Enum):
     REPORT_START = auto()
     AWAITING_MESSAGE = auto()
@@ -163,6 +165,10 @@ class Report:
             del INCOMPLETE_REPORTS[message.author]
 
             self.state = State.REPORT_COMPLETE
+
+            # send report to firebase
+            add_report(report.reported_message.content, report.reported_user, report.reporting_user)
+
             return [reply], report
 
         return []
