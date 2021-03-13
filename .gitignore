@@ -1,4 +1,5 @@
-tokens.json
+*.json
 .vscode
 __pycache__
 discord.log
+*.joblib

@@ -8,8 +8,10 @@ REVIEWS_DATABASE = {}
 # Key: user_id Value: case_id
 CURRENT_REVIEWERS_DB = {}
 # Number of reviewers
-NUM_REVIEWERS = 2
-
+NUM_REVIEWERS = 1
+# Track number of false reports
+BAD_REPORT_TRACKER = {}
+BAD_REPORT_THRESHOLD = 1
 
 """ 
 Decision Codes:
@@ -22,7 +24,7 @@ Decision Codes:
 # Key: subcat_code Value: String
 # cat_code of 3 indicates a custom category is in subcat
 CATEGORY_CODES = {
-    "1": {"1" : "Fraudulent", "2" : "Fake/Misleading", "3" : "Spam", "4" : "Impersonation", "5" : "Periscope Auto-Flag"},
+    "1": {"1" : "Fraudulent", "2" : "Fake/Misleading", "3" : "Spam", "4" : "Impersonation", "5" : "Periscope Auto-Flag", "6" : "Fake news Auto-Flag"},
     "2": {"1" : "Nudity or Exploitation", "2" : "Violence, Terrorism, or Incitement", "3" : "Suicide or Self-Injury", "4" : "Unauthorized or Illegal Sales", "5" : "Hate Speech, Harassment, or Bullying"}
 }
 

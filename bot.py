@@ -11,6 +11,7 @@ from report import Report, ReportDatabaseEntry
 from review import Review
 from uni2ascii import uni2ascii
 import globals
+from model.abridged import isFakeNews
 
 # Set up logging to the console
 logger = logging.getLogger('discord')
@@ -160,8 +161,10 @@ class ModBot(discord.Client):
 
             # If the report is complete or cancelled, remove it from our map
             if self.reports[author_id].report_complete():
+                if report is not None and report.reporting_user not in globals.BAD_REPORT_TRACKER:
+                    globals.BAD_REPORT_TRACKER[report.reporting_user] = 1
                 self.reports.pop(author_id)
-                if report is not None:
+                if report is not None and globals.BAD_REPORT_TRACKER[report.reporting_user] <= globals.BAD_REPORT_THRESHOLD:
                     globals.TICKET_NUM += 1
                     globals.REPORTS_DATABASE[globals.TICKET_NUM] = report
                     await self.handle_report(globals.TICKET_NUM)
@@ -199,6 +202,8 @@ class ModBot(discord.Client):
                 break
 
         if decision_code_list[0] > 90:
+            if report.reporting_user in globals.BAD_REPORT_TRACKER:
+                globals.BAD_REPORT_TRACKER[report.reporting_user] += 1
             await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - {report.reported_user}\'s post was deemed not a violation.```')
             await report.reporting_user.send('```Your report has been processed - we have decided not to take action at this time. Feel free to DM a moderator if you have further questions.```')
         elif 20 <= decision_code_list[0] < 30:
@@ -251,7 +256,6 @@ class ModBot(discord.Client):
             await message.author.send('```Your message was flagged by our automatic moderation system and has been deleted.```')
             await mod_channel.send(f'```{message.author.name}\'s post auto-deleted: "{message.content}"```')
             await message.delete()
-
         elif should_report:
             await message.author.send('```Your message was flagged by our automatic moderation system and is under review.```')
             # Auto detection falls under offensive/harmful/abusive content
@@ -260,6 +264,17 @@ class ModBot(discord.Client):
             globals.TICKET_NUM += 1
             globals.REPORTS_DATABASE[globals.TICKET_NUM] = report
             await self.handle_report(globals.TICKET_NUM)
+        else:
+            # Check if the post contains a link to fake news
+            isFake = isFakeNews(message.content)
+            if isFake:
+                # Auto detection falls under fake news
+                report = ReportDatabaseEntry('ModBot', message.author, message, '1', '6', reported_description)
+                # Create report ticket
+                globals.TICKET_NUM += 1
+                globals.REPORTS_DATABASE[globals.TICKET_NUM] = report
+                await self.handle_report(globals.TICKET_NUM)
+
 
     def eval_text(self, message):
         '''
