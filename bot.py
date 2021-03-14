@@ -61,12 +61,12 @@ class ModBot(discord.Client):
                 if channel.name == f'group-{self.group_num}-mod':
                     self.mod_channels[guild.id] = channel
 
+
     async def on_message(self, message):
         '''
         This function is called whenever a message is sent in a channel that the bot can see (including DMs). 
         Currently the bot is configured to only handle messages that are sent over DMs or in your group's "group-#" channel. 
         '''
-        mod_channel = self.mod_channels[message.guild.id]
         # Ignore messages from us 
         if message.author.id == self.user.id:
             return
@@ -78,6 +78,7 @@ class ModBot(discord.Client):
             await self.handle_dm(message)
         
         if message.content == '!add_user':
+            mod_channel = self.mod_channels[message.guild.id]
             if str(message.author) not in get_all_users_firebase():
                 add_user(str(message.author))
                 await mod_channel.send(f'```Added User: {str(message.author)} to the Firebase Database.```')
@@ -210,15 +211,18 @@ class ModBot(discord.Client):
                 break
 
         if decision_code_list[0] > 90:
+            evaluate_report(report.report_id,False)
             if report.reporting_user in globals.BAD_REPORT_TRACKER:
                 globals.BAD_REPORT_TRACKER[report.reporting_user] += 1
             await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - {report.reported_user}\'s post was deemed not a violation.```')
             await report.reporting_user.send('```Your report has been processed - we have decided not to take action at this time. Feel free to DM a moderator if you have further questions.```')
         elif 20 <= decision_code_list[0] < 30:
+            evaluate_report(report.report_id,True)
             await report.reported_message.delete()
             await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - {report.reported_user} has been (not actually) kicked.```')
             await report.reporting_user.send('```Your report has been processed - the offending user has been kicked and their post has been deleted.```')
         elif 10 <= decision_code_list[0] < 20:
+            evaluate_report(report.report_id,True)
             await report.reported_message.delete()
             await mod_channel.send(f'```Code: {decision_code_list[0]}, Ticket: {case_id} - {report.reported_user}\'s offending post has been deleted.```')
             await report.reporting_user.send('```Your report has been processed - the offending post has been deleted.```')
@@ -268,6 +272,10 @@ class ModBot(discord.Client):
             await message.author.send('```Your message was flagged by our automatic moderation system and is under review.```')
             # Auto detection falls under offensive/harmful/abusive content
             report = ReportDatabaseEntry('ModBot', message.author, message, '1', '5', reported_description)
+
+            report_id = add_report(str(report.reported_message.content), str(report.reported_user), str(report.reporting_user))
+            report.report_id = report_id
+
             # Create report ticket
             globals.TICKET_NUM += 1
             globals.REPORTS_DATABASE[globals.TICKET_NUM] = report
@@ -278,6 +286,10 @@ class ModBot(discord.Client):
             if isFake:
                 # Auto detection falls under fake news
                 report = ReportDatabaseEntry('ModBot', message.author, message, '1', '6', reported_description)
+                
+                report_id = add_report(str(report.reported_message.content), str(report.reported_user), str(report.reporting_user))
+                report.report_id = report_id
+
                 # Create report ticket
                 globals.TICKET_NUM += 1
                 globals.REPORTS_DATABASE[globals.TICKET_NUM] = report

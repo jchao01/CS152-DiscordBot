@@ -27,6 +27,7 @@ class ReportDatabaseEntry:
         self.reported_category = reported_category
         self.reported_subcategory = reported_subcategory
         self.reported_description = reported_description
+        self.report_id = None
 
 class Report:
     START_KEYWORD = "report"
@@ -167,7 +168,8 @@ class Report:
             self.state = State.REPORT_COMPLETE
 
             # send report to firebase
-            add_report(report.reported_message.content, report.reported_user, report.reporting_user)
+            report_id = add_report(str(report.reported_message.content), str(report.reported_user), str(report.reporting_user))
+            report.report_id = report_id
 
             return [reply], report
 
